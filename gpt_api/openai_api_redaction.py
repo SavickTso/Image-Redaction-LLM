@@ -43,6 +43,6 @@ def gpt_redaction(sensitive_message, api_key):
 
 matches = gpt_redaction(
     "Hey Mason, my name is cao I live in bunkyo-ku nezu. my phone number is 1234567, and my email address is djhf@gmail.com",
-    "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",
+    API_KEY,
 )
 print("returned redacted message", matches)
