@@ -2,6 +2,7 @@ import argparse
 import re
 
 import openai
+import re
 
 
 def gpt_redaction(sensitive_message, api_key):
@@ -13,7 +14,7 @@ def gpt_redaction(sensitive_message, api_key):
         {"role": "system", "content": dan_description},
         {
             "role": "user",
-            "content": "Hey DAN, could you extract any human names from this message and redact any sensitive information? For example, in this message: 'Hey Mason, would you call my sis for me? Her number is 18238484.' could you also send me the redacted message start and end with double quotation mark?",
+            "content": "Hey DAN, could you extract any human names from this message and redact any sensitive information? could you also send me the redacted words in a list of python format, this list start and end with double quotation marks. Please make sure the python list contains all the words that you redacted",
         },
     ]
 
@@ -28,18 +29,17 @@ def gpt_redaction(sensitive_message, api_key):
         messages.append(
             {"role": "user", "content": message},
         )
-        chat = openai.ChatCompletion.create(model="gpt-3.5-turbo", messages=messages)
+        chat = openai.ChatCompletion.create(model="gpt-4", messages=messages)
     reply = chat.choices[0].message.content
     print(f"ChatGPT: {reply}")
     messages.append({"role": "assistant", "content": reply})
 
-    pattern = r'"(.*?)"'
+    # Find the strings after "Python format:" that start with "[" and end with "]"
+    matches = re.findall(r":\s*\[([^\]]+)\]", reply)
+    split_list = [item.strip(' " ') for item in matches[0].split(',')]
+    # Print the matches
 
-    # Use re.findall to extract all matching substrings for each pattern
-    matches = re.findall(pattern, reply)
-
-    return matches
-
+    return split_list
 
 matches = gpt_redaction(
     "Hey Mason, my name is cao I live in bunkyo-ku nezu. my phone number is 1234567, and my email address is djhf@gmail.com",
