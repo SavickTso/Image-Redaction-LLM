@@ -9,6 +9,9 @@ using SixLabors.ImageSharp.Processing;
 using System.Text.Json;
 using SixLabors.ImageSharp.Drawing.Processing;
 
+string VISION_KEY = Environment.GetEnvironmentVariable("VISION_KEY") ?? "";
+string VISION_ENDPOINT = Environment.GetEnvironmentVariable("VISION_ENDPOINT") ?? "";
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
@@ -16,10 +19,10 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddAntiforgery();
-builder.Services.AddSingleton(sp => new OpenAIAPI("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"));
-builder.Services.AddSingleton(sp => new ComputerVisionClient(new ApiKeyServiceClientCredentials("bce8d633878a482885708e2caae7c869"))
+builder.Services.AddSingleton(sp => new OpenAIAPI());
+builder.Services.AddSingleton(sp => new ComputerVisionClient(new ApiKeyServiceClientCredentials(VISION_KEY))
 {
-    Endpoint = "https://hci-ocr.cognitiveservices.azure.com/"
+    Endpoint = VISION_ENDPOINT,
 });
 
 var app = builder.Build();
