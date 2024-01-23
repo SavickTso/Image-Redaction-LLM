@@ -2,9 +2,9 @@ import {
   Button,
   Card,
   CardBody,
+  CircularProgress,
   Container,
   Flex,
-  HStack,
   Heading,
   Image,
   Input,
@@ -12,12 +12,66 @@ import {
   InputRightElement,
   Text,
 } from "@chakra-ui/react";
+import ky from "ky";
 import { useState } from "react";
-import original from "../assets/original.png";
-import redacted from "../assets/redacted.png";
+
+const base64ArrayBuffer = (arrayBuffer: ArrayBuffer) => {
+  let base64 = "";
+  const encodings =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+  const bytes = new Uint8Array(arrayBuffer);
+  const byteLength = bytes.byteLength;
+  const byteRemainder = byteLength % 3;
+  const mainLength = byteLength - byteRemainder;
+
+  let a, b, c, d;
+  let chunk;
+
+  // Main loop deals with bytes in chunks of 3
+  for (let i = 0; i < mainLength; i = i + 3) {
+    // Combine the three bytes into a single integer
+    chunk = (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
+
+    // Use bitmasks to extract 6-bit segments from the triplet
+    a = (chunk & 16515072) >> 18; // 16515072 = (2^6 - 1) << 18
+    b = (chunk & 258048) >> 12; // 258048   = (2^6 - 1) << 12
+    c = (chunk & 4032) >> 6; // 4032     = (2^6 - 1) << 6
+    d = chunk & 63; // 63       = 2^6 - 1
+
+    // Convert the raw binary segments to the appropriate ASCII encoding
+    base64 += encodings[a] + encodings[b] + encodings[c] + encodings[d];
+  }
+
+  // Deal with the remaining bytes and padding
+  if (byteRemainder == 1) {
+    chunk = bytes[mainLength];
+
+    a = (chunk & 252) >> 2; // 252 = (2^6 - 1) << 2
+
+    // Set the 4 least significant bits to zero
+    b = (chunk & 3) << 4; // 3   = 2^2 - 1
+
+    base64 += encodings[a] + encodings[b] + "==";
+  } else if (byteRemainder == 2) {
+    chunk = (bytes[mainLength] << 8) | bytes[mainLength + 1];
+
+    a = (chunk & 64512) >> 10; // 64512 = (2^6 - 1) << 10
+    b = (chunk & 1008) >> 4; // 1008  = (2^6 - 1) << 4
+
+    // Set the 2 least significant bits to zero
+    c = (chunk & 15) << 2; // 15    = 2^4 - 1
+
+    base64 += encodings[a] + encodings[b] + encodings[c] + "=";
+  }
+
+  return base64;
+};
 
 function App() {
-  const [step, setStep] = useState(0);
+  const [original, setOriginal] = useState("");
+  const [redacted, setRedacted] = useState("");
+  const [refine, setRefine] = useState("");
 
   return (
     <Container background="gray.200" rounded="xl" height="100vh" padding="4">
@@ -29,27 +83,50 @@ function App() {
         overflowY="scroll"
       >
         <Heading>IR-LLM</Heading>
-        {step < 1 && (
+        {!original && (
           <Card width="100%">
             <CardBody>
+              <input
+                id="file-input"
+                type="file"
+                name="name"
+                style={{ display: "none" }}
+                onChange={async (e) => {
+                  const contents = base64ArrayBuffer(
+                    (await e.target.files?.[0].arrayBuffer()) ??
+                      new ArrayBuffer(0)
+                  );
+                  setOriginal(contents);
+                  const res = await ky
+                    .post("/api/process", {
+                      json: { data: contents, prompts: [refine] },
+                    })
+                    .json<{ image: string }>();
+                  setRedacted(res.image);
+                }}
+              />
               <Button
                 colorScheme="teal"
                 variant="ghost"
-                onClick={() => setStep(step + 1)}
+                onClick={() => document.getElementById("file-input")!.click()}
               >
                 Select Image
               </Button>
             </CardBody>
           </Card>
         )}
-        {step >= 1 && (
+        {original && (
           <Card width="100%">
             <CardBody>
-              <Image src={original} />
+              <Image src={"data:image;base64," + original} />
+              <Text>{refine}</Text>
             </CardBody>
           </Card>
         )}
-        {step >= 2 && (
+        {original && !redacted && (
+          <CircularProgress isIndeterminate color="green.300" />
+        )}
+        {redacted && (
           <>
             <Card width="max-content">
               <CardBody>
@@ -58,19 +135,20 @@ function App() {
             </Card>
             <Card width="100%">
               <CardBody>
-                <Image src={redacted} />
+                <Image src={"data:image;base64," + redacted} />
+                <Text>Right click on the image to save it.</Text>
               </CardBody>
             </Card>
           </>
         )}
-        {step >= 1 && (
+        {original && redacted && (
           <>
             <Card width="max-content">
               <CardBody>
-                <Text>What{step >= 2 && " else"} do you want to redact?</Text>
+                <Text>Do you want to refine the results?</Text>
               </CardBody>
             </Card>
-            <HStack>
+            {/* <HStack>
               <Button colorScheme="teal" variant="ghost">
                 Names
               </Button>
@@ -80,15 +158,28 @@ function App() {
               <Button colorScheme="teal" variant="ghost">
                 Phone Number
               </Button>
-            </HStack>
+            </HStack> */}
             <InputGroup size="md">
               <Input
                 pr="4.5rem"
-                placeholder="Or, type your request here"
+                placeholder="Type your request here"
                 background="white"
+                onChange={(e) => setRefine(e.target.value)}
               />
               <InputRightElement width="4.5rem">
-                <Button h="1.75rem" size="sm" onClick={() => setStep(step + 1)}>
+                <Button
+                  h="1.75rem"
+                  size="sm"
+                  onClick={async () => {
+                    setRedacted("");
+                    const res = await ky
+                      .post("/api/process", {
+                        json: { data: original, prompts: [refine] },
+                      })
+                      .json<{ image: string }>();
+                    setRedacted(res.image);
+                  }}
+                >
                   Send
                 </Button>
               </InputRightElement>

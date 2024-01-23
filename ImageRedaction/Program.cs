@@ -43,7 +43,7 @@ var summaries = new[]
     "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
 };
 
-app.MapPost("/prompt", async ([FromBody] PromptRequest req, OpenAIAPI openai) =>
+app.MapPost("/api/prompt", async ([FromBody] PromptRequest req, OpenAIAPI openai) =>
 {
     var chat = openai.Chat.CreateConversation();
     chat.Model = Model.GPT4_Turbo;
@@ -59,7 +59,7 @@ app.MapPost("/prompt", async ([FromBody] PromptRequest req, OpenAIAPI openai) =>
 .WithName("GetRedaction")
 .WithOpenApi();
 
-app.MapPost("/ocr", async ([FromBody] ImageRequest ocr, ComputerVisionClient cv) =>
+app.MapPost("/api/ocr", async ([FromBody] ImageRequest ocr, ComputerVisionClient cv) =>
 {
     var data = Convert.FromBase64String(ocr.Data);
     var textHeaders = await cv.ReadInStreamAsync(new MemoryStream(data));
@@ -84,7 +84,7 @@ app.MapPost("/ocr", async ([FromBody] ImageRequest ocr, ComputerVisionClient cv)
 .WithName("GetOCR")
 .WithOpenApi();
 
-app.MapPost("/process", async ([FromBody] RedactRequest req, ComputerVisionClient cv, OpenAIAPI openai) =>
+app.MapPost("/api/process", async ([FromBody] RedactRequest req, ComputerVisionClient cv, OpenAIAPI openai) =>
 {
     var data = Convert.FromBase64String(req.Data);
     var textHeaders = await cv.ReadInStreamAsync(new MemoryStream(data));
@@ -175,6 +175,8 @@ app.MapPost("/process", async ([FromBody] RedactRequest req, ComputerVisionClien
 })
 .WithName("ImageRedaction")
 .WithOpenApi();
+
+app.UseStaticFiles();
 
 app.Run();
 
