@@ -13,7 +13,7 @@ import {
   Text,
 } from "@chakra-ui/react";
 import ky from "ky";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const base64ArrayBuffer = (arrayBuffer: ArrayBuffer) => {
   let base64 = "";
@@ -71,7 +71,20 @@ const base64ArrayBuffer = (arrayBuffer: ArrayBuffer) => {
 function App() {
   const [original, setOriginal] = useState("");
   const [redacted, setRedacted] = useState("");
+  const [taskId, setTaskId] = useState("");
   const [refine, setRefine] = useState("");
+
+  useEffect(() => {
+    if (taskId && !redacted) {
+      const interval = setInterval(async () => {
+        const res = await ky
+          .post("/api/process_async_get?id=" + taskId)
+          .json<{ image: string }>();
+        setRedacted(res.image);
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [taskId, redacted]);
 
   return (
     <Container background="gray.200" rounded="xl" height="100vh" padding="4">
@@ -98,11 +111,11 @@ function App() {
                   );
                   setOriginal(contents);
                   const res = await ky
-                    .post("/api/process", {
+                    .post("/api/process_async", {
                       json: { data: contents, prompts: [refine] },
                     })
-                    .json<{ image: string }>();
-                  setRedacted(res.image);
+                    .json<{ id: string }>();
+                  setTaskId(res.id);
                 }}
               />
               <Button
@@ -173,11 +186,11 @@ function App() {
                   onClick={async () => {
                     setRedacted("");
                     const res = await ky
-                      .post("/api/process", {
+                      .post("/api/process_async", {
                         json: { data: original, prompts: [refine] },
                       })
-                      .json<{ image: string }>();
-                    setRedacted(res.image);
+                      .json<{ id: string }>();
+                    setTaskId(res.id);
                   }}
                 >
                   Send

@@ -38,10 +38,7 @@ app.UseHttpsRedirection();
 
 app.UseAntiforgery();
 
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+var taskResults = new Dictionary<Guid, RedactResponse>();
 
 app.MapPost("/api/prompt", async ([FromBody] PromptRequest req, OpenAIAPI openai) =>
 {
@@ -86,6 +83,35 @@ app.MapPost("/api/ocr", async ([FromBody] ImageRequest ocr, ComputerVisionClient
 
 app.MapPost("/api/process", async ([FromBody] RedactRequest req, ComputerVisionClient cv, OpenAIAPI openai) =>
 {
+    return await Redact(req, cv, openai, Guid.NewGuid());
+})
+.WithName("ImageRedaction")
+.WithOpenApi();
+
+app.MapPost("/api/process_async", ([FromBody] RedactRequest req, ComputerVisionClient cv, OpenAIAPI openai) =>
+{
+    var guid = Guid.NewGuid();
+    Task.Run(() => Redact(req, cv, openai, guid));
+    return new { Id = guid };
+    // return await Redact(req, cv, openai);
+})
+.WithName("ImageRedactionAsync")
+.WithOpenApi();
+
+app.MapPost("/api/process_async_get", ([FromQuery] Guid id, ComputerVisionClient cv, OpenAIAPI openai) =>
+{
+    Console.WriteLine(id);
+    return taskResults.GetValueOrDefault(id);
+})
+.WithName("ImageRedactionAsyncGet")
+.WithOpenApi();
+
+app.UseStaticFiles();
+
+app.Run();
+
+async Task<RedactResponse> Redact(RedactRequest req, ComputerVisionClient cv, OpenAIAPI openai, Guid taskId)
+{
     var data = Convert.FromBase64String(req.Data);
     var textHeaders = await cv.ReadInStreamAsync(new MemoryStream(data));
     string operationLocation = textHeaders.OperationLocation;
@@ -111,6 +137,8 @@ app.MapPost("/api/process", async ([FromBody] RedactRequest req, ComputerVisionC
     chat.AppendExampleChatbotOutput("""["Mason", "cao", "bunkyo-ku nezu", "1234567", "djhf@gmail.com"]""");
     chat.AppendUserInput("Hey Tom, this is Toby. (Please do not mark Tom as sensitive)");
     chat.AppendExampleChatbotOutput("""["Toby"]""");
+    chat.AppendUserInput("Hey Tom, this is Toby and foobar. (Please redact foobar)");
+    chat.AppendExampleChatbotOutput("""["Toby", "foobar"]""");
     var chatReq = string.Join("\n\n", results.AnalyzeResult.ReadResults.Select(r => string.Join('\n', r.Lines.Select(l => l.Text)))) + $"\n[{string.Join(". ", req.Prompts)}]";
     chat.AppendUserInput(chatReq);
     var prompt = await chat.GetResponseFromChatbotAsync();
@@ -168,18 +196,14 @@ app.MapPost("/api/process", async ([FromBody] RedactRequest req, ComputerVisionC
     var outputStream = new MemoryStream();
     image.SaveAsJpeg(outputStream);
     var imageBase64 = Convert.ToBase64String(outputStream.ToArray());
-    return new RedactResponse
+    Console.WriteLine(taskId);
+    var res = new RedactResponse
     {
         Image = imageBase64,
     };
-})
-.WithName("ImageRedaction")
-.WithOpenApi();
-
-app.UseStaticFiles();
-
-app.Run();
-
+    taskResults[taskId] = res;
+    return res;
+}
 
 double Distance(string s, string t)
 {
